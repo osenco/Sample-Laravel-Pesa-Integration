@@ -139,7 +139,7 @@
                             <div class="content-header-section sidebar-mini-visible-b">
                                 <!-- Logo -->
                                 <span class="content-header-item font-w700 font-size-xl float-left animated fadeIn">
-                                    <span class="text-dual-primary-dark">l</span><span class="text-primary">p</span>
+                                    <span class="text-dual-primary-dark">o</span><span class="text-primary">p</span>
                                 </span>
                                 <!-- END Logo -->
                             </div>
@@ -158,7 +158,7 @@
                                 <div class="content-header-item">
                                     <a class="link-effect font-w700" href="index.html">
                                         <i class="si si-fire text-primary"></i>
-                                        <span class="font-size-xl text-dual-primary-dark">Laravel</span><span class="font-size-xl text-primary">Pesa</span>
+                                        <span class="font-size-xl text-dual-primary-dark">Osen</span><span class="font-size-xl text-primary">Pesa</span>
                                     </a>
                                 </div>
                                 <!-- END Logo -->
