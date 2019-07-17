@@ -2,22 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use App\Customer;
+use App\Fee;
+use App\User;
+use App\Year;
 use App\Payment;
-use App\Package;
+use App\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Redirect;
 
-use AfricasTalking\SDK\AfricasTalking;
 use Osen\Mpesa\STK;
+use Osen\Mpesa\C2B;
 
 class MpesaController extends Controller
 {
     /**
-     * Create a new controller instance.
+     * Create a new MpesaController instance. We also configure the M-PESA APIs here so they are available for the controller methods.
      *
      * @return void
      */
@@ -25,18 +27,36 @@ class MpesaController extends Controller
     {
         STK::init(
             array(
-                'env'               => 'live',
+                'env'               => 'sandbox',
                 'type'              => 4,
-                'shortcode'         => '881655',
-                'headoffice'        => '881655',
-                'key'               => 'ucNYYNLGsY0wLlWh4R6AE8dGWjpnfX85',
-                'secret'            => 'yRGt7dNciatkzfVz',
-                'passkey'           => '0470d3c37e79c46d5c9f19b3eb685808f484691cd1800bbee91f85d890748858',
-                'validation_url'    => url('api/mpesa/validate'),
-                'confirmation_url'  => url('api/mpesa/confirm'),
-                'callback_url'      => url('api/mpesa/reconcile'),
-                'timeout_url'       => url('api/mpesa/timeout'),
-                'response_url'      => url('api/mpesa/response'),
+                'shortcode'         => '174379',
+                'headoffice'        => '174379',
+                'key'               => 'Your Consumer Key',
+                'secret'            => 'Your Consumer Secret',
+                'passkey'           => 'Your Online Passkey',
+                'validation_url'    => url('mpesa/validate'),
+                'confirmation_url'  => url('mpesa/confirm'),
+                'callback_url'      => url('mpesa/reconcile'),
+                'results_url'       => url('mpesa/results'),
+                'timeout_url'       => url('mpesa/timeout'),
+            )
+        );
+        
+        C2B::init(
+            array(
+                'env'               => 'sandbox',
+                'type'              => 4,
+                'shortcode'         => '174379',
+                'key'               => '',
+                'secret'            => '',
+                'passkey'           => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
+                'secret'            => 'secret',
+                'username'          => 'username',
+                'validation_url'    => url('mpesa/validate'),
+                'confirmation_url'  => url('mpesa/confirm'),
+                'callback_url'      => url('mpesa/reconcile'),
+                'timeout_url'       => url('mpesa/timeout'),
+                'response_url'      => url('mpesa/response'),
             )
         );
     }
@@ -49,45 +69,41 @@ class MpesaController extends Controller
      */
     public function pay(Request $request)
     {
-        $data           = array();
-
-        $payload        = \json_decode($request->getContent(), true);
-
-        $answers        = $payload['form_response']['answers'];
-
-        $data['name']   = $answers[0]['text'];
-        $data['phone']  = $answers[1]['phone_number'];
-
-        $package        = $answers[2]['choice']['label'];
-        $data['amount'] = Package::whereName($package)->first()->amount;
+        $data           = $request->all();
 
         try {
-            $customer       = Customer::create($data);
-            $data['customer_id'] = $customer->id;
-        } catch (\Throwable $th) {
-            $data['customer_id'] = 1;
-        }
+            $response   = STK::send($request->input('phone'), $request->input('amount'), $request->input('reference'));
 
-        try {
-            $response   = STK::send($data['phone'], $data['amount'], $package);
-
-            if(isset($response['errorCode'])){
-                return ['code' => $response['errorCode'], 'message' => $response['errorMessage']];
+            if(!$response){
+                toast(ucwords(__('could not connect to daraja')), 'error');
+                return Redirect::back();
+            } elseif(isset($response['errorCode'])){
+                toast(ucwords(__("{$response['errorCode']}: {$response['errorMessage']}")), 'error');
+                return Redirect::back();
             } else {
-                $data['ref']       = isset($response['MerchantRequestID']) ? $response['MerchantRequestID'] : time();
-                $data['status']    = 'Pending';
-                if(Payment::create($data)){
-                    return ['code' => 'success', 'payment' => $data];
+                $data['ref']            = $response['MerchantRequestID'];
+                $data['paid_status']    = 'Pending';
+                $data['session']        = 1;
+                $data['amount']         = 0;
+                $data['fee_id']         = $data['reference'];
+
+                $payment                = Payment::create($data);
+        
+                if($payment){
+                    toast(ucwords(__('check your phone to complete payment')), 'success');
                 } else {
-                    return ['code' => 'fail'];
+                    toast(ucwords(__('failed to create record')), 'error');
                 }
+
+                return Redirect::back();
             }
         } catch (\Exception $e) {
-            return ['code' => 'fail', 'error' => $e->getMessage()];
+            toast(ucwords(__($e->getMessage())), 'error');
+            return Redirect::back();
         }
     }
 
-    public function reconcile(Request $request, $method = 'mpesa')
+    public function reconcile(Request $request)
     {
         return STK::reconcile(
             function ($response)
@@ -95,6 +111,8 @@ class MpesaController extends Controller
                 $resultCode 			    = $response['stkCallback']['ResultCode'];
                 $resultDesc 			    = $response['stkCallback']['ResultDesc'];
                 $merchantRequestID 			= $response['stkCallback']['MerchantRequestID'];
+                
+                $payment                    = Payment::whereRef($merchantRequestID)->first();
 
                 if(isset($response['stkCallback']['CallbackMetadata'])){
                     $CallbackMetadata       = $response['stkCallback']['CallbackMetadata']['Item'];
@@ -105,25 +123,17 @@ class MpesaController extends Controller
                     $transactionDate        = $CallbackMetadata[3]['Value'];
                     $phone                  = $CallbackMetadata[4]['Value'];
                 
-                    $payment                = Payment::where('ref', $merchantRequestID)->first();
                     $payment->status        = 'Paid';
+                    $payment->amount        = $amount;
                     $payment->receipt       = $mpesaReceiptNumber;
-                    if ($payment->save()) {
-                        try {
-                            $phone  = (substr($phone, 0,1) == '+') ? $phone : '+'.$phone;
 
-                            $AT     = new AfricasTalking(Setting::sms('api_username', 'schooliq'), Setting::sms('api_key', '97ca15305d52f5113374ea80ae5e4718ebca840099c9d6b7b5dc63b3d0fc1634'));
-                            $sms    = $AT->sms();
-                            $sms->send([
-                                'to'      => $phone,
-                                'message' => 'Your payment of '.Setting::currency_codes(Setting::general('currency', 'KES'), 'KES').' '.$amount.'has been received'
-                            ]);
-                        } catch (\Throwable $th) {
-                            toast(ucwords(__('failed to send sms')), 'error');
-                        }
-
-                        return true;
-                    }
+                    return true;
+                } else {
+                    $payment->status        = 'Pending';
+                }
+                
+                if ($payment->save()) {
+                    toast(ucwords(__('failed to send sms')), 'error');
 
                     return true;
                 }
@@ -133,9 +143,34 @@ class MpesaController extends Controller
         );
     }
 
+    public function register(Request $request)
+    {
+        return C2B::register();
+    }
+
     public function validation(Request $request)
     {
-        return STK::validate(
+        return C2B::validate(
+            function ($response)
+            {
+                return true;
+            }
+        );
+    }
+
+    public function status(Request $request)
+    {
+        return C2B::status(
+            function ($response)
+            {
+                return true;
+            }
+        );
+    }
+
+    public function balance(Request $request)
+    {
+        return C2B::balance(
             function ($response)
             {
                 return true;
@@ -145,10 +180,31 @@ class MpesaController extends Controller
 
     public function confirmation(Request $request)
     {
-        return STK::confirm(
+        return C2B::confirm(
             function ($response)
             {
-                return true;
+                $TransactionType    = $response['TransactionType'];
+                $TransID            = $response['TransID'];
+                $TransTime          = $response['TransTime'];
+                $TransAmount        = $response['TransAmount'];
+                $BusinessShortCode  = $response['BusinessShortCode'];
+                $BillRefNumber      = $response['BillRefNumber'];
+                $InvoiceNumber      = $response['InvoiceNumber'];
+                $OrgAccountBalance  = $response['OrgAccountBalance'];
+                $ThirdPartyTransID  = $response['ThirdPartyTransID'];
+                $MSISDN             = $response['MSISDN'];
+                $FirstName          = $response['FirstName'];
+                $MiddleName         = $response['MiddleName'];
+                $LastName           = $response['LastName'];
+
+                $customer           = "{$FirstName} {$MiddleName} {$LastName}";
+                
+                $payment            = Payment::whereRef($BillRefNumber)->first();
+                //->whereBetween('created_at', '<', Carbon::now()->subMinute()->toDateTimeString())
+                
+                $payment->receipt   = $TransID;
+
+                return $payment->save() ? true : false;
             }
         );
     }
