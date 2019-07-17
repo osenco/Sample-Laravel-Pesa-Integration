@@ -2,13 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Fee;
-use App\User;
-use App\Year;
-use App\Payment;
 use App\Setting;
+use App\Payment;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Redirect;
@@ -27,13 +23,12 @@ class MpesaController extends Controller
     {
         STK::init(
             array(
-                'env'               => 'sandbox',
-                'type'              => 4,
-                'shortcode'         => '174379',
-                'headoffice'        => '174379',
-                'key'               => 'Your Consumer Key',
-                'secret'            => 'Your Consumer Secret',
-                'passkey'           => 'Your Online Passkey',
+                'env'               => Setting::mpesa('env', 'sandbox'),
+                'type'              => Setting::mpesa('type', 4),
+                'shortcode'         => Setting::mpesa('shortcode', '174379'),
+                'key'               => Setting::mpesa('key'),
+                'secret'            => Setting::mpesa('secret'),
+                'passkey'           => Setting::mpesa('passkey', 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'),
                 'validation_url'    => url('mpesa/validate'),
                 'confirmation_url'  => url('mpesa/confirm'),
                 'callback_url'      => url('mpesa/reconcile'),
@@ -44,14 +39,13 @@ class MpesaController extends Controller
         
         C2B::init(
             array(
-                'env'               => 'sandbox',
-                'type'              => 4,
-                'shortcode'         => '174379',
-                'key'               => '',
-                'secret'            => '',
-                'passkey'           => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-                'secret'            => 'secret',
-                'username'          => 'username',
+                'env'               => Setting::mpesa('env', 'sandbox'),
+                'type'              => Setting::mpesa('type', 4),
+                'shortcode'         => Setting::mpesa('shortcode', '174379'),
+                'key'               => Setting::mpesa('key'),
+                'secret'            => Setting::mpesa('secret'),
+                'username'          => Setting::mpesa('username', ''),
+                'passkey'           => Setting::mpesa('passkey', 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'),
                 'validation_url'    => url('mpesa/validate'),
                 'confirmation_url'  => url('mpesa/confirm'),
                 'callback_url'      => url('mpesa/reconcile'),
@@ -72,7 +66,7 @@ class MpesaController extends Controller
         $data           = $request->all();
 
         try {
-            $response   = STK::send($request->input('phone'), $request->input('amount'), $request->input('reference'));
+            $response   = STK::send($request->input('phone'), $request->input('amount'), $request->input('account'));
 
             if(!$response){
                 toast(ucwords(__('could not connect to daraja')), 'error');
@@ -81,11 +75,8 @@ class MpesaController extends Controller
                 toast(ucwords(__("{$response['errorCode']}: {$response['errorMessage']}")), 'error');
                 return Redirect::back();
             } else {
-                $data['ref']            = $response['MerchantRequestID'];
-                $data['paid_status']    = 'Pending';
-                $data['session']        = 1;
-                $data['amount']         = 0;
-                $data['fee_id']         = $data['reference'];
+                $data['request']    = $response['MerchantRequestID'];
+                $data['status']     = 0;
 
                 $payment                = Payment::create($data);
         
@@ -112,7 +103,7 @@ class MpesaController extends Controller
                 $resultDesc 			    = $response['stkCallback']['ResultDesc'];
                 $merchantRequestID 			= $response['stkCallback']['MerchantRequestID'];
                 
-                $payment                    = Payment::whereRef($merchantRequestID)->first();
+                $payment                    = Payment::whereRequest($merchantRequestID)->first();
 
                 if(isset($response['stkCallback']['CallbackMetadata'])){
                     $CallbackMetadata       = $response['stkCallback']['CallbackMetadata']['Item'];
@@ -123,7 +114,7 @@ class MpesaController extends Controller
                     $transactionDate        = $CallbackMetadata[3]['Value'];
                     $phone                  = $CallbackMetadata[4]['Value'];
                 
-                    $payment->status        = 'Paid';
+                    $payment->status        = 1;
                     $payment->amount        = $amount;
                     $payment->receipt       = $mpesaReceiptNumber;
 
@@ -188,7 +179,7 @@ class MpesaController extends Controller
                 $TransTime          = $response['TransTime'];
                 $TransAmount        = $response['TransAmount'];
                 $BusinessShortCode  = $response['BusinessShortCode'];
-                $BillRefNumber      = $response['BillRefNumber'];
+                $BillrequestNumber  = $response['BillrequestNumber'];
                 $InvoiceNumber      = $response['InvoiceNumber'];
                 $OrgAccountBalance  = $response['OrgAccountBalance'];
                 $ThirdPartyTransID  = $response['ThirdPartyTransID'];
@@ -199,7 +190,7 @@ class MpesaController extends Controller
 
                 $customer           = "{$FirstName} {$MiddleName} {$LastName}";
                 
-                $payment            = Payment::whereRef($BillRefNumber)->first();
+                $payment            = Payment::whereRequest($BillrequestNumber)->first();
                 //->whereBetween('created_at', '<', Carbon::now()->subMinute()->toDateTimeString())
                 
                 $payment->receipt   = $TransID;

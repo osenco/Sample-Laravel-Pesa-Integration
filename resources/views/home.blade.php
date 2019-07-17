@@ -1,23 +1,27 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">Dashboard</div>
-
-                <div class="card-body">
-                    @if (session('status'))
-                        <div class="alert alert-success" role="alert">
-                            {{ session('status') }}
-                        </div>
-                    @endif
-
-                    You are logged in!
+    <div class="row gutters-tiny invisible" data-toggle="appear">
+        <div class="col-6 col-md-4 col-xl-2">
+            <a class="block block-link-shadow text-center" href="{{url('payments/create?method=mpesastk')}}">
+                <div class="block-content">
+                    <p class="mt-5">
+                        <i class="si si-user fa-3x"></i>
+                    </p>
+                    <p class="font-w600">M-PESA STK</p>
                 </div>
-            </div>
+            </a>
         </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <a class="block block-link-shadow text-center" href="{{url('payments/create?method=mpesac2b')}}">
+                <div class="block-content">
+                    <p class="mt-5">
+                        <i class="si si-magnifier fa-3x"></i>
+                    </p>
+                    <p class="font-w600">M-PESA C2B</p>
+                </div>
+            </a>
+        </div>
+        <!-- END Row #5 -->
     </div>
-</div>
 @endsection

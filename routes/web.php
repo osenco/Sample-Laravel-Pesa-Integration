@@ -11,13 +11,12 @@
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::get('/', 'HomeController@index')->name('home');
+Route::get('/home', 'HomeController@index')->name('home');
 
 Auth::routes();
-
-Route::get('/home', 'HomeController@index')->name('home');
+Route::get('login/{provider}', 'Auth\LoginController@redirectToProvider');
+Route::get('login/{provider}/callback', 'Auth\LoginController@handleProviderCallback');
 
 Route::prefix('mpesa')->group(function ()
 {
@@ -32,5 +31,6 @@ Route::prefix('mpesa')->group(function ()
 
 Route::resources([
   'payments' 	=> 'PaymentController',
-  'users'       => 'UserController'
+  'users'       => 'UserController',
+  'settings'    => 'SettingController'
 ]);
